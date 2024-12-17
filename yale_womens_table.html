@@ -1,0 +1,114 @@
+<html>
+    <head>
+        <title>Women's Table</title>
+        <script type="text/javascript" src="d3.js"></script>
+        <style>
+            .trace{
+                stroke: steelblue;
+                stroke-width: 1;
+                fill: none;
+            }
+            .gridline{
+                stroke: firebrick;
+                stroke-width: 0.5;
+                stroke-opacity: 0.6;
+                fill: none;
+            }
+            .gridlabel{
+                font-size:10px;
+                color:black;
+                font-family:sans-serif;
+            }
+            .axis{
+                stroke: black;
+                stroke-width: 1;
+                stroke-opacity: 0.4;
+            }
+        </style>
+    </head>
+    <body>
+        <script type="text/javascript">
+            let h = 700
+            let w = 700
+            let margin = 30
+            let svg = d3.select("body")
+                        .append("svg")
+                        .attr("height", h)
+                        .attr("width", w)
+                        .append("g")
+                        .attr("transform",()=>{return "translate("+(h/2)+","+(h/2)+")"})
+            let rowInter = (d)=>{
+                return {
+                    year: parseInt(d.year),
+                    enrollment: parseInt(d.enrollment)
+                }
+            }
+            d3.csv("yale_womens_enrollment.csv", rowInter).then((dataset)=>{
+                // log
+                console.log(dataset)
+
+                // set up
+                let min_enrollment = 0
+                let max_enrollment = d3.max(dataset,d=>d.enrollment)
+                let min_year = d3.min(dataset,d=>d.year)
+                let max_year = d3.max(dataset,d=>d.year)
+                let thetaScale = d3.scaleTime()
+                                    .domain([min_year,max_year])
+                                    .range([0,2*Math.PI])
+                let rScale = d3.scaleLog()
+                                .domain([1,max_enrollment]) // I replaced zeros in csv with ones, this allows log scaling
+                                .range([0,h/2-margin])
+                function get_x(r,t){return rScale(r)*Math.cos(thetaScale(t))}
+                function get_y(r,t){return rScale(r)*Math.sin(thetaScale(t))}
+
+                // make data trace
+                let line = d3.line()
+                            .x(d=>get_x(d.enrollment,d.year))
+                            .y(d=>get_y(d.enrollment,d.year))
+                svg.append("path")
+                    .datum(dataset)
+                    .attr("d",line)
+                    .attr("class","trace")
+                let display_years = [min_year,1875,1900,1925,1950,1975,max_year]
+                for (let row of dataset){
+                    if (display_years.includes(row.year)){
+                        console.log(row.year)
+                        let enrollment = row.enrollment
+                        if (row.year == min_year){
+                            enrollment = min_enrollment
+                        }
+                        svg.append("circle")
+                            .attr("cx",get_x(enrollment,row.year))
+                            .attr("cy",get_y(enrollment,row.year))
+                            .attr("r",2)
+                            .attr("fill","navy")
+                        svg.append("text")
+                            .attr("x",get_x(enrollment,row.year))
+                            .attr("y",get_y(enrollment,row.year)+10)
+                            .attr("class","gridlabel")
+                            .attr("text-anchor","middle")
+                            .text(row.year+": "+enrollment)
+                    }
+                }
+
+                // make gridlines
+                for (let i of [5,10,50,100,500,1000,5000]){
+                    let grid = d3.arc()
+                                .innerRadius(rScale(i))
+                                .outerRadius(rScale(i)+1)
+                                .startAngle(0)
+                                .endAngle(2*Math.PI)
+                    svg.append("path")
+                        .attr("d",grid)
+                        .attr("class","gridline")
+                    svg.append("text")
+                        .attr("x",0)
+                        .attr("y",0-rScale(i))
+                        .attr("text-anchor","middle")
+                        .attr("class","gridlabel")
+                        .text(i)
+                }
+            })
+        </script>
+    </body>
+</html>

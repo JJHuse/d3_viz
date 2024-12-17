@@ -1,0 +1,109 @@
+<html>
+    <head>
+        <title>Euler</title>
+        <script type="text/javascript" src="d3.js"></script>
+        <style>
+            #trace{
+                stroke: steelblue;
+                stroke-width:1px;
+                fill:none;
+            }
+            .point{
+                fill: navy;
+                stroke: none;
+            }
+            #step_label{
+                font-family: sans-serif;
+                font-size: 16px;
+                color: black;
+            }
+        </style>
+    </head>
+    <body>
+        <div>
+            <input type="range" id="stepsize" min="0.005" max="1" value="0.25" step="0.005">
+            <span>dt: </span>
+            <span id="step_label">0.25</span>
+        </div>
+        <script type="text/javascript">
+            // Slider
+            let range = document.getElementById("stepsize")
+            range.oninput = function (){
+                let step = this.value
+                use_step(step)
+            }
+            // Make graph
+            let h = 600
+            let w = 600
+            let margin = 30
+            let svg = d3.select("body")
+                        .append("svg")
+                        .attr("height",h)
+                        .attr("width",w)
+            let xScale = d3.scaleLinear()
+                            .domain([-3,3])
+                            .range([margin,w-margin])
+            let yScale = d3.scaleLinear()
+                            .domain([-3,3])
+                            .range([h-margin,margin])
+            let xAxis = d3.axisBottom()
+                            .scale(xScale)
+                            .ticks(13)
+            let yAxis = d3.axisLeft()
+                            .scale(yScale)
+                            .ticks(13)
+            svg.append("g")
+                .attr("transform","translate(0,"+(h/2)+")")
+                .call(xAxis)
+            svg.append("g")
+                .attr("transform","translate("+(w/2)+",0)")
+                .call(yAxis)
+
+            use_step(0.25)
+                
+            function use_step(step_size){
+                document.getElementById("step_label").textContent = step_size
+                // svg.selectAll("path").remove()
+                let trace = document.getElementById("trace")
+                if (trace){
+                    trace.remove()
+                }
+                svg.selectAll("circle").remove()
+                // Make data
+                let prev = [0,-1]
+                let dataset = [prev]
+                let should_continue = true
+                let backup_max = 10000
+                let i = 0
+                // let step_size = 0.25
+                while (i<backup_max){
+                    let next = [-prev[1]*step_size + prev[0], prev[0]/2 * step_size + prev[1]]
+                    dataset.push(next)
+                    if (prev[0] < 0 & next[0]>= 0){
+                        break
+                    }
+                    prev = next
+                    i+=1
+                }
+
+                // Plot data
+                let path = d3.line()
+                                .x(d=>xScale(d[0]))
+                                .y(d=>yScale(d[1]))
+                svg.append("path")
+                    .datum(dataset)
+                    .attr("d",path)
+                    // .attr("class","trace")
+                    .attr("id","trace")
+                svg.selectAll("circle")
+                    .data(dataset)
+                    .enter()
+                    .append("circle")
+                    .attr("cx",d=>xScale(d[0]))
+                    .attr("cy",d=>yScale(d[1]))
+                    .attr("r","2px")
+                    .attr("class","point")
+            }
+        </script>
+    </body>
+</html>

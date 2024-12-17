@@ -1,0 +1,572 @@
+<html>
+    <head>
+        <title>Nobels</title>
+        <script type="text/javascript" src="d3.js"></script>
+        <style>
+            .graph_choice {border-style: solid;border-width: 2px;border-color: navy;border-radius:2px;padding: 2px;font-size: 8px}
+            .field_choice {border-style: solid;border-width: 2px;border-color: navy;border-radius:2px;padding: 2px;font-size: 12px;}
+            .button_on {background-color: lightblue;}
+            .button_off {background-color: transparent;}
+            #next_button {border-style: solid;border-width: 2px;border-color: navy;border-radius:2px;padding: 2px; font-size:2em}
+            #woman_button {border-style: solid;border-width: 2px;border-color: navy;border-radius:2px;padding: 2px; font-size:10px;}
+        </style>
+    </head>
+    <body>
+        <div>
+            <span id="year_v_prize" class="graph_choice">Prize year vs. age at prize</span>
+            <span id="prize_v_delay" class="graph_choice">Prize year vs time since research</span>
+            <span id="prize_v_age_research" class="graph_choice">Prize year vs age at research</span>
+            <span id="big_nobel_heatmap" class="graph_choice">Big Nobel Heatmap</span>
+            <span id="big_nobel_scatter" class="graph_choice">Big Nobel Scatter, year vs. age</span>
+            <span id="geo_heatmap" class="graph_choice">Geographic Heatmap</span>
+        </div>
+        <div id="specifiers" style="margin-top:10px; margin-bottom:5px">
+            <span id="woman_button" class="button_off">Click to toggle woman emphasis</span>
+        </div>
+        <div>
+            <span style="color:red;padding:2px">Medicine</span>
+            <span style="color:limegreen;padding:2px">Chemistry</span>
+            <span style="color:blue;padding:2px">Physics</span>
+            <span style="color:gray;padding:2px">Peace</span>
+            <span style="color:magenta;padding:2px">Literature</span>
+            <span style="color:black;padding:2px">Economic Sciences</span>
+        </div>
+        <div id="svg_holder"></div>
+        <span id="next_button">Next</span>
+        <script type="text/javascript">
+            let w = 850
+            let h = 550
+            let margin = 60
+
+            let svg = d3.select("#svg_holder")
+                        .append("svg")
+                        .attr("height", h)
+                        .attr("width", w)
+            function set_year_x(num_ticks,max){
+                let x_scale = d3.scaleLinear()
+                                .domain([1901,max])
+                                .range([margin, w - 2*margin])
+                let x_axis = d3.axisBottom()
+                            .scale(x_scale)
+                            .ticks(num_ticks)
+                x_axis.tickFormat(d => d.toString())
+                svg.append("g")
+                .attr("class", "axis")
+                .attr("transform","translate(0,"+(h-margin)+")")
+                .call(x_axis)
+                return x_scale
+            }
+            function reset_graph(){
+                d3.selectAll("g").remove()
+                d3.selectAll("circle").remove()
+                d3.selectAll(".heatmap_labels").remove()
+                d3.selectAll("rect").remove()
+            }
+            function reset_tooltip(){
+                d3.select("#tooltip").remove();
+                d3.select("#tooltip_background").remove()
+                d3.selectAll(".country_list").remove()
+            }
+            function make_tooltip(val,x,y,fill,size,background){
+                if(background){
+                    let width = parseInt(size[0])/2 * val.length + 2
+                    let height = parseInt(size[0])
+                    svg.append("rect")
+                        .attr("id", "tooltip_background")
+                        .attr("x",x)
+                        .attr("y",y-height-6)
+                        .attr("height", height + 3)
+                        .attr("width",width+3)
+                        .attr("fill","white")
+                }
+                svg.append("text")
+                    .attr("id", "tooltip")
+                    .attr("x", x)
+                    .attr("y", y-5)
+                    .attr("font-family", "sans-serif")
+                    .attr("font-size", size)
+                    .attr("font-weight","bold")
+                    .attr("fill", fill)
+                    .text(val);
+            }
+            function place_y(y_axis){
+                svg.append("g")
+                .attr("class","axis")
+                .attr("transform", "translate("+margin+", 0)")
+                .call(y_axis)
+            }
+            function field_color(field){
+                if (field === "Chemistry"){
+                    return "limegreen"
+                }
+                if (field.includes("Medicine")){
+                    return "red"
+                }
+                if (field === "Physics"){
+                    return "blue"
+                }
+                if (field === "Literature"){
+                    return "magenta"
+                }
+                if (field === "Peace"){
+                    return "gray"
+                }
+                if (field === "Econ"){
+                    return "black"
+                }
+            }
+            function woman_radius(d){
+                let button = document.getElementById("woman_button")
+                if (button.className === "button_off"){
+                    return "3px"
+                }
+                if ("woman" in d){
+                    if (d.woman === "1"){
+                        return "6px"
+                    }
+                }
+                else {
+                    if (d.gender === "female"){
+                        return "6px"
+                    }
+                }
+                return "3px"
+            }
+            function emphasize_women(){
+                let button = document.getElementById("woman_button")
+                if (button.className === "button_off"){
+                    button.className = "button_on"
+                }
+                else{
+                    button.className = "button_off"
+                }
+                svg.selectAll("circle")
+                    .attr("r",d=>woman_radius(d))
+            }
+            function extract_age(prize){
+                let award = parseInt(prize.awardYear)
+                let birth = prize.birth_date
+                let age = 0
+                if (birth.split("-").length === 3){
+                    age = award - parseInt(birth.split("-")[0])
+                }
+                else{
+                    let birth_year = parseInt(birth.split("/")[2]) + Math.floor((award - 100) / 100)*100
+                    age = (award - birth_year) % 100 // oldest prizewinner was 97: John Goodenough
+                }
+                return age
+            }
+            function bin_nobel_ages(dataset){
+                let bin_begins = [1901,1913,1925,1937,1949,1961,1973,1985,1997,2009]
+                let categories = ["Medicine","Chemistry","Physics","Literature","Peace", "Econ"]
+                let bins = {}
+                for (let bin of bin_begins){
+                    bins[bin] = {}
+                    for (let c of categories){
+                        bins[bin][c] = {
+                            "avg": 0,
+                            "dev": 0,
+                            "data": []
+                        }
+                    }
+                }
+                for (let prize of dataset){
+                    let category = prize.category
+                    if(category.includes("Medicine")){category = "Medicine"}
+                    else if(category.includes("Econ")){category = "Econ"}
+                    let year_bin = Math.floor((parseInt(prize.awardYear) - 1901) / 12)
+                    let age = extract_age(prize)
+                    bins[bin_begins[year_bin]][category]["data"].push(age)
+                }
+                for (let bin in bins){
+                    for (let c of categories){
+                        bins[bin][c]["avg"] = d3.mean(bins[bin][c]["data"])
+                        bins[bin][c]["dev"] = d3.deviation(bins[bin][c]["data"])
+                    }
+                }
+                return bins
+            }
+            function bin_nobel_geo(dataset){
+                let bin_begins = [1901,1913,1925,1937,1949,1961,1973,1985,1997,2009]
+                let categories = ["Medicine","Chemistry","Physics","Literature","Peace", "Econ"]
+                let bins = {}
+                for (let bin of bin_begins){
+                    bins[bin] = {}
+                    for (let c of categories){
+                        bins[bin][c] = {
+                            "countries": new Set(),
+                            "continents": new Set()
+                        }
+                    }
+                }
+                for (let prize of dataset){
+                    let category = prize.category
+                    if(category.includes("Medicine")){category = "Medicine"}
+                    else if(category.includes("Econ")){category = "Econ"}
+                    let year_bin = Math.floor((parseInt(prize.awardYear) - 1901) / 12)
+                    bins[bin_begins[year_bin]][category]["countries"].add(prize.birth_countryNow)
+                    bins[bin_begins[year_bin]][category]["continents"].add(prize.birth_continent)
+                }
+                return bins
+            }
+            function age_extremes(bins){
+                let min = 100
+                let max = 0
+                for (let bin in bins){
+                    for (let category in bins[bin]){
+                        if (bins[bin][category].avg > max){
+                            max = bins[bin][category].avg
+                        }
+                        if (bins[bin][category].avg < min){
+                            min = bins[bin][category].avg
+                        }
+                    }
+                }
+                return [min,max]
+            }
+            function color_gradient(value,min,max){
+                let yellow = [235,215,0]
+                let blue = [0,98,235]
+                let transformed_value = yellow.map((v,i)=>{
+                    let prop = (value - min) / (max - min)
+                    let range = blue[i] - v
+                    return range * prop + v
+                })
+                return "rgb("+transformed_value[0]+","+transformed_value[1]+","+transformed_value[2]+")"
+            }
+            function geo_extremes(bins){
+                let min = 100
+                let max = 0
+                for (let bin in bins){
+                    for (let category in bins[bin]){
+                        let diversity_index = bins[bin][category].countries.size * bins[bin][category].continents.size
+                        bins[bin][category]["diversity_index"] = diversity_index
+                        if (diversity_index > max){
+                            max = diversity_index
+                        }
+                        if (diversity_index < min){
+                            min = diversity_index
+                        }
+                    }
+                }
+                return [min,max]
+            }
+            function year_v_prize(dataset) {
+                reset_graph()
+                d3.selectAll(".graph_choice")
+                    .attr("style","background-color:transparent")
+                d3.select("#year_v_prize")
+                    .attr("style","background-color:lightblue")
+                let x_scale = set_year_x(28,2008)
+
+                let ages = []
+                for (let prize of dataset){
+                    ages.push(prize.year_prize - prize.year_birth)
+                }
+                let ymax = d3.max(ages)
+                let y_scale = d3.scaleLinear()
+                                .domain([0,ymax])
+                                .range([h-margin,margin])
+                let y_axis = d3.axisLeft()
+                            .scale(y_scale)
+                            .ticks(ymax / 5)
+                place_y(y_axis)
+                svg.selectAll("points")
+                    .data(dataset)
+                    .enter()
+                    .append("circle")
+                    .attr("cx",d=>x_scale(d.year_prize))
+                    .attr("cy",(d,i)=>{return y_scale(ages[i])})
+                    .attr("r",d=>woman_radius(d))
+                    .attr("fill",d=>field_color(d.field))
+                    .on("mouseover", function(event,d) {
+                        let xPosition = parseFloat(d3.select(this).attr("cx"));
+                        let yPosition = parseFloat(d3.select(this).attr("cy"));
+                        make_tooltip(d.name,xPosition,yPosition,"black","8px",background=true)
+
+                        })
+                    .on("mouseout", reset_tooltip)
+            }
+            function prize_v_delay(dataset){
+                reset_graph()
+
+                d3.selectAll(".graph_choice")
+                    .attr("style","background-color:transparent")
+                d3.select("#prize_v_delay")
+                    .attr("style","background-color:lightblue") 
+                let x_scale = set_year_x(28,2008)
+
+                let delays = []
+                for (prize of dataset){
+                    delays.push(prize.year_prize - prize.year_research_mid)
+                }
+                let ymax = d3.max(delays)
+                let ymin = d3.min(delays)
+                let y_scale = d3.scaleLinear()
+                                .domain([ymin,ymax])
+                                .range([h-margin,margin])
+                let y_axis = d3.axisLeft()
+                            .scale(y_scale)
+                            .ticks(ymax / 5)
+                y_axis.tickFormat(d=>d.toString())
+                place_y(y_axis)
+                svg.selectAll("points")
+                    .data(dataset)
+                    .enter()
+                    .append("circle")
+                    .attr("cx",d=>x_scale(d.year_prize))
+                    .attr("cy",(d,i)=>{return y_scale(delays[i])})
+                    .attr("r",d=>woman_radius(d))
+                    .attr("fill",d=>field_color(d.field))
+                    .on("mouseover", function(event,d) {
+                        let xPosition = parseFloat(d3.select(this).attr("cx"));
+                        let yPosition = parseFloat(d3.select(this).attr("cy"));
+                        make_tooltip(d.name,xPosition,yPosition,"black","8px",background=true)
+
+                        })
+                    .on("mouseout", reset_tooltip)
+            }
+            function prize_v_age_research(dataset){
+                reset_graph()
+
+                d3.selectAll(".graph_choice")
+                    .attr("style","background-color:transparent")
+                d3.select("#prize_v_age_research")
+                    .attr("style","background-color:lightblue") 
+                let x_scale = set_year_x(28,2008)
+
+                let ages = []
+                for (prize of dataset){
+                    ages.push(prize.year_research_mid - prize.year_birth)
+                }
+                let ymax = d3.max(ages)
+                let y_scale = d3.scaleLinear()
+                                .domain([0,ymax])
+                                .range([h-margin,margin])
+                let y_axis = d3.axisLeft()
+                            .scale(y_scale)
+                            .ticks(ymax / 5)
+                y_axis.tickFormat(d=>d.toString())
+                place_y(y_axis)
+                svg.selectAll("points")
+                    .data(dataset)
+                    .enter()
+                    .append("circle")
+                    .attr("cx",d=>x_scale(d.year_prize))
+                    .attr("cy",(d,i)=>{return y_scale(ages[i])})
+                    .attr("r",d=>woman_radius(d))
+                    .attr("fill",d=>field_color(d.field))
+                    .on("mouseover", function(event,d) {
+                        let xPosition = parseFloat(d3.select(this).attr("cx"));
+                        let yPosition = parseFloat(d3.select(this).attr("cy"));
+                        make_tooltip(d.name,xPosition,yPosition,"black","8px",background=true)
+
+                        })
+                    .on("mouseout", reset_tooltip)
+            }
+            function big_nobel_scatter(dataset){
+                reset_graph()
+                d3.selectAll(".graph_choice")
+                    .attr("style","background-color:transparent")
+                d3.select("#big_nobel_scatter")
+                    .attr("style","background-color:lightblue") 
+                let x_scale = set_year_x(20,2020)
+                let max = 90
+                for (prize of dataset){
+                    let candidate = extract_age(prize)
+                    if (candidate > max){
+                        max = candidate
+                    }
+                }
+                let y_scale = d3.scaleLinear()
+                                .domain([0,max])
+                                .range([h-margin,margin])
+                let y_axis = d3.axisLeft()
+                                .scale(y_scale)
+                                .ticks(max / 5)
+                place_y(y_axis)
+                svg.selectAll("points")
+                    .data(dataset)
+                    .enter()
+                    .append("circle")
+                    .attr("cx",d=>x_scale(d.awardYear))
+                    .attr("cy",d=>y_scale(extract_age(d)))
+                    .attr("r",d=>woman_radius(d))
+                    .attr("fill",d=>field_color(d.category))
+                    .on("mouseover", function(event,d) {
+                        let xPosition = parseFloat(d3.select(this).attr("cx"));
+                        let yPosition = parseFloat(d3.select(this).attr("cy"));
+                        make_tooltip(d.fullName,xPosition,yPosition,"black","8px",background=true)
+
+                        })
+                    .on("mouseout", reset_tooltip)
+                
+            }
+            function big_nobel_heatmap(dataset){
+                reset_graph()
+                d3.selectAll(".graph_choice")
+                    .attr("style","background-color:transparent")
+                d3.select("#big_nobel_heatmap")
+                    .attr("style","background-color:lightblue") 
+
+                let x_scale = set_year_x(10,2021)
+                let y_scale = d3.scaleLinear()
+                                .domain([0,6])
+                                .range([h-margin,margin])
+                let y_axis = d3.axisLeft()
+                                .scale(y_scale)
+                                .tickValues([])
+                place_y(y_axis)
+                let bins = bin_nobel_ages(dataset)
+                let [min,max] = age_extremes(bins)
+                
+                
+                for (let bin in bins){
+                    let j = 1
+                    for (let category in bins[bin]){
+                        svg.append("rect")
+                            .attr("width",x_scale(1913) - margin)
+                            .attr("height",h-y_scale(1)-margin)
+                            .attr("fill",color_gradient(bins[bin][category].avg,min,max))
+                            .attr("stroke","black")
+                            .attr("x",x_scale(bin))
+                            .attr("y",y_scale(j))
+                            .on("mouseover", function(event,d) {
+                                let xPosition = parseFloat(d3.select(this).attr("x")) + 10;
+                                let yPosition = parseFloat(d3.select(this).attr("y")) + 25;
+                                make_tooltip(()=>{
+                                    let avg = Math.floor(bins[bin][category].avg)
+                                    let dev = Math.floor(bins[bin][category].dev)
+                                    return avg + "+/-" + dev
+                                },xPosition,yPosition,"white","15px", background=false)
+
+                                })
+                            .on("mouseout", reset_tooltip)
+                        j += 1
+                    }
+                }
+                let j = 0
+                for (let category in bins[1901]){
+                    j+=1
+                    svg.append("text")
+                        .attr("class","heatmap_labels")
+                        .attr("x", 0)
+                        .attr("y", y_scale(j) + 30)
+                        .attr("font-family", "sans-serif")
+                        .attr("font-size", "8px")
+                        .attr("fill", "black")
+                        .text(category);
+                }
+                svg.append("text")
+                    .attr("class","heatmap_labels")
+                    .attr("x",x_scale(1930))
+                    .attr("y",20)
+                    .attr("font-family","sans-serif")
+                    .attr("font-size","16px")
+                    .attr("fill","black")
+                    .text("Age at time of prize, +/- 1 stdev on hover")
+
+                
+            }
+            function geo_heatmap(dataset){
+                reset_graph()
+                d3.selectAll(".graph_choice")
+                    .attr("style","background-color:transparent")
+                d3.select("#geo_heatmap")
+                    .attr("style","background-color:lightblue") 
+
+                let x_scale = set_year_x(10,2021)
+                let y_scale = d3.scaleLinear()
+                                .domain([0,6])
+                                .range([h-margin,margin])
+                let y_axis = d3.axisLeft()
+                                .scale(y_scale)
+                                .tickValues([])
+                place_y(y_axis)
+                let bins = bin_nobel_geo(dataset)
+                let [min,max] = geo_extremes(bins)
+                
+                
+                for (let bin in bins){
+                    let j = 1
+                    for (let category in bins[bin]){
+                        svg.append("rect")
+                            .attr("width",x_scale(1913) - margin)
+                            .attr("height",h-y_scale(1)-margin)
+                            .attr("fill",color_gradient(bins[bin][category].diversity_index,min,max))
+                            .attr("stroke","black")
+                            .attr("x",x_scale(bin))
+                            .attr("y",y_scale(j))
+                            .on("mouseover", function(event,d) {
+                                let xPosition = parseFloat(d3.select(this).attr("x")) + 10;
+                                let yPosition = parseFloat(d3.select(this).attr("y")) + 25;
+                                make_tooltip(()=>{
+                                    return bins[bin][category].countries.size + "," + bins[bin][category].continents.size
+                                },xPosition,yPosition,"white","15px", background=false)
+
+                                })
+                            .on("click",function(event,d){
+                                let k = 0
+                                for (country of bins[bin][category].countries){
+                                    svg.append("text")
+                                        .attr("class","country_list")
+                                        .attr("x",x_scale(2022))
+                                        .attr("y",y_scale(6) + 12*k)
+                                        .attr("font-family","sans-serif")
+                                        .attr("font-size","12px")
+                                        .attr("fill","black")
+                                        .text(country)
+                                    k+=1
+                                }
+                            })
+                            .on("mouseout", reset_tooltip)
+                        j += 1
+                    }
+                }
+                let j = 0
+                for (let category in bins[1901]){
+                    j+=1
+                    svg.append("text")
+                        .attr("class","heatmap_labels")
+                        .attr("x", 0)
+                        .attr("y", y_scale(j) + 30)
+                        .attr("font-family", "sans-serif")
+                        .attr("font-size", "12px")
+                        .attr("fill", "black")
+                        .text(category);
+                }
+                svg.append("text")
+                    .attr("class","heatmap_labels")
+                    .attr("x",x_scale(1901))
+                    .attr("y",20)
+                    .attr("font-family","sans-serif")
+                    .attr("font-size","16px")
+                    .attr("fill","black")
+                    .text("Geographic diversity in Nobel prizes. Num countries, continents on hover. Click box for more info.")
+
+                
+            }
+            let graphers = [year_v_prize, prize_v_delay, prize_v_age_research, big_nobel_heatmap, big_nobel_scatter, geo_heatmap]
+            let i = 3
+            d3.select("#next_button")
+                .on("click",()=>{
+                    if(i<3){
+                        d3.csv("Jones_Weinberg_2011_PNAS.csv").then((data)=>{
+                            // Data taken from paper "Age Dynamics in Scientific Creativity" by Jones and Weinberg
+                            graphers[i](data)
+                            d3.select("#woman_button").on("click",()=>{emphasize_women()})
+                            i = (i+1) % graphers.length
+                        })
+                    }
+                    else{
+                        d3.csv("nobel_people.csv").then((data)=>{
+                            // Data taken from Kaggle, see https://www.kaggle.com/datasets/imdevskp/nobel-prize
+                            graphers[i](data)
+                            d3.select("#woman_button").on("click",()=>{emphasize_women()})
+                            i = (i+1) % graphers.length
+                        })
+                    }
+                })
+        </script>
+    </body>
+</html>

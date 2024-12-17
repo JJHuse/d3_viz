@@ -1,0 +1,105 @@
+<html>
+    <head>
+        <title>Vector Field</title>
+        <script type="text/javascript" src="d3.js"></script>
+    </head>
+    <body>
+        <script type="text/javascript">
+            // set up svg
+            let h = 600
+            let w = 1200
+            let margin = 50
+            let svg = d3.select("body")
+                        .append("svg")
+                        .attr("height",h)
+                        .attr("width",w)
+            
+            // set up coordinate plane
+            let xScale = d3.scaleLinear()
+                            .domain([-5,5])
+                            .range([margin,w/2-margin])
+            let yScale = d3.scaleLinear()
+                            .domain([-5,5])
+                            .range([h-margin,margin])
+            let xAxis = d3.axisBottom()
+                            .scale(xScale)
+                            .ticks(11)
+            let yAxis = d3.axisLeft()
+                            .scale(yScale)
+                            .ticks(11)
+            svg.append("g")
+                .attr("transform","translate(0,"+(h/2)+")")
+                .call(xAxis)
+            svg.append("g")
+                .attr("transform","translate("+(w/4)+",0)")
+                .call(yAxis)
+            
+            // sample/calculate vectors
+            let steps = [-5,-4.5,-4,-3.5,-3,-2.5,-2,-1.5,-1,-0.5,0,0.5,1,1.5,2,2.5,3,3.5,4,4.5,5]
+            let dataset = []
+            for (let x of steps){
+                for (let y of steps){
+                    dataset.push({x:x,y:y,xvec:-y,yvec:x*y})
+                }
+            }
+            console.log(dataset)
+            // plot vectors
+            svg.selectAll("polygon")
+                .data(dataset)
+                .enter()
+                .append("polygon")
+                .attr("points","-3,0 3,0 1,1 1,0.5 -3,0.5")
+                .attr("transform",(d)=>{
+                    let rotation = -180 * Math.atan2(d.yvec,d.xvec)/Math.PI
+                    return "translate("+xScale(d.x)+","+yScale(d.y)
+                            +") rotate("+rotation
+                            +") scale("+Math.hypot(d.xvec,d.yvec)+")"
+                })
+
+            // for the jitters
+            // set up coordinate plane
+            let jxScale = d3.scaleLinear()
+                            .domain([-5,5])
+                            .range([w/2+margin,w-margin])
+            let jyScale = d3.scaleLinear()
+                            .domain([-5,5])
+                            .range([h-margin,margin])
+            let jxAxis = d3.axisBottom()
+                            .scale(jxScale)
+                            .ticks(11)
+            let jyAxis = d3.axisLeft()
+                            .scale(jyScale)
+                            .ticks(11)
+            svg.append("g")
+                .attr("transform","translate(0,"+(h/2)+")")
+                .call(jxAxis)
+            svg.append("g")
+                .attr("transform","translate("+(3*w/4)+",0)")
+                .call(jyAxis)
+            
+            // sample/calculate vectors
+            let jsteps = [-5,-4.5,-4,-3.5,-3,-2.5,-2,-1.5,-1,-0.5,0,0.5,1,1.5,2,2.5,3,3.5,4,4.5,5]
+            let jdataset = []
+            for (let x of steps){
+                for (let y of steps){
+                    let jx = (x - .25) + (Math.random()%0.5)
+                    let jy = (y - .25) + (Math.random()%0.5)
+                    jdataset.push({x:jx,y:jy,xvec:-jy,yvec:jx*jy})
+                }
+            }
+            console.log(jdataset)
+            // plot vectors
+            svg.selectAll("jpolygon")
+                .data(jdataset)
+                .enter()
+                .append("polygon")
+                .attr("points","-3,0 3,0 1,1 1,0.5 -3,0.5")
+                .attr("transform",(d)=>{
+                    let rotation = -180 * Math.atan2(d.yvec,d.xvec)/Math.PI
+                    return "translate("+jxScale(d.x)+","+jyScale(d.y)
+                            +") rotate("+rotation
+                            +") scale("+Math.hypot(d.xvec,d.yvec)+")"
+                })
+        </script>
+    </body>
+</html>
