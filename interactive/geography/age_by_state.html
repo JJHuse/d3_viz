@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<title>D3: Adding data points (circles) to the map</title>
+		<script type="text/javascript" src="../../d3.js"></script>
+		<style type="text/css">
+			/* No style rules here yet */		
+		</style>
+	</head>
+	<body>
+		<script type="text/javascript">
+
+			//Width and height
+			let w = 800;
+			let h = 800;
+
+			//Define map projection
+			let projection = d3.geoAlbersUsa()
+								   .translate([w/2, h/2])
+								   .scale([800]);
+
+			//Define path generator
+			let path = d3.geoPath()
+							 .projection(projection);
+							 
+			//Define quantize scale to sort data values into buckets of color
+			let color = d3.scaleQuantize()
+								.range(["rgb(237,248,233)","rgb(186,228,179)","rgb(116,196,118)","rgb(49,163,84)","rgb(0,109,44)"]);
+								//Colors taken from colorbrewer.js, included in the D3 download
+
+			//Create SVG element
+			let svg = d3.select("body")
+						.append("svg")
+						.attr("width", w)
+						.attr("height", h);
+			svg.append("text")
+				.attr("x",255)
+				.attr("y",110)
+				.attr("font-size",36)
+				.attr("font-family","sans-serif")
+				.attr("font-weight","bold")
+				.attr("fill","black")
+				.text("Age by US State")
+			svg.append("text")
+				.attr("x",290)
+				.attr("y",135)
+				.attr("font-size",10)
+				.attr("font-family","sans-serif")
+				.attr("fill","gray")
+				.text("Hover over each state's chart for magnification")
+
+			d3.csv("state_ages.csv").then( (data)=> { // age data from census 2023 download
+				console.log("Median ages",data)
+				let age_min = d3.min(data, (d)=> { return parseFloat(d.age); })
+				let age_max = d3.max(data, (d)=> { return parseFloat(d.age); })
+
+				//Set input domain for color scale
+				color.domain([age_min,age_max]);
+
+				//Load in GeoJSON data
+				//Updated load for v5 beyond
+				d3.json("us-states.json").then (function(json) {
+
+					//Merge the age data and GeoJSON
+					//Loop through once for each age data value
+					for (let i = 0; i < data.length; i++) {
+				
+						let dataState = data[i].state;				//Grab state name
+						let dataValue = parseFloat(data[i].age);	//Grab data value, and convert from string to float
+				
+						//Find the corresponding state inside the GeoJSON
+						for (let j = 0; j < json.features.length; j++) {
+						
+							let jsonState = json.features[j].properties.name;
+				
+							if (dataState == jsonState) {
+						
+								//Copy the data value into the JSON
+								json.features[j].properties.value = dataValue;
+								
+								//Stop looking through the JSON
+								break;
+								
+							}
+						}		
+					}
+
+					//Bind data and create one path per GeoJSON feature
+					svg.selectAll("path")
+					   .data(json.features)
+					   .enter()
+					   .append("path")
+					   .attr("d", path)
+					   .style("fill", (d)=> {
+					   		//Get data value
+					   		let value = d.properties.value;
+					   		
+					   		if (value) {
+					   			//If value exists…
+						   		return color(value);
+					   		} else {
+					   			//If value is undefined…
+						   		return "#ccc";
+					   		}
+					   });
+
+					//Load in cities data
+					//Updated load
+					d3.csv("statecentroids.csv").then( (data)=> {
+						function points(x,y){
+							return x+","+y+" "
+						}
+						function x_scale(x,y){
+							let scale = ""
+							for (let i = 2; i < 18; i += 4){
+								scale += points((x-i),y)
+								scale += points((x-i),y-1)
+								scale += points((x-i),y)
+							}
+							return scale
+						}
+						function y_scale(x,y){
+							let y_val = 5.56
+							let x_extension = 18
+							let scale = ""
+							scale += points(x,y-y_val)
+							scale += points(x+x_extension,y-y_val)
+							scale += points(x,y-y_val)
+							return scale
+						}
+
+						function minibar(state,x,y){
+							let polygon = points(x,y) // bottom left
+							polygon += y_scale(x,y)
+							for (let i = 0; i<state.length; i+=1){
+								polygon += points((x+i),(y-state[i])) // top left
+								polygon += points((x+i+1),(y-state[i])) // top right
+							}
+							polygon += points((x+state.length),y) // bottom right
+							polygon += x_scale((x+state.length),y) // age scale
+							return polygon
+						}
+
+						d3.csv("state_age_distr.csv").then((states)=>{ // age data from census 2023 download
+							let nation = {}
+							for (let state of states){
+								nation[state.state] = []
+								for (let i = 0; i < 90; i+=5){
+									nation[state.state].push(parseFloat(state[i]))
+								}
+							}
+							console.log("Age distributions",nation)
+
+							// Make legend
+							let distro_l = {x:500,y:225,scale:5,state:"District of Columbia",abbrev:"DC"}
+							let color_l = {x:175,y:180,box_width:40,box_height:15}
+							svg.append("polygon")
+								.attr("id","magnified_distro")
+								.attr("points",()=>{
+									let x = distro_l.x / distro_l.scale
+									let y = distro_l.y / distro_l.scale
+									let legend_bars = minibar(nation[distro_l.state],x,y)
+									return legend_bars
+								})
+								.attr("transform","scale("+distro_l.scale+")")
+								.style("fill", "yellow")
+								.style("stroke", "black")
+								.style("stroke-width", 0.25)
+							svg.append("text")
+								.attr("id","magnified_abbrev")
+								.attr("x",distro_l.x - 12 * distro_l.scale)
+								.attr("y",distro_l.y - 9 * distro_l.scale)
+								.attr("font-family","sans-serif")
+								.attr("font-size",8 * distro_l.scale)
+								.attr("fill","black")
+								.text(distro_l.abbrev)
+							let age_range = age_max - age_min
+							let age_quant = age_range / 4
+							let age_interval = age_range / 5
+							for (let i = 0; i < 5 ; i+= 1){
+								svg.append("rect")	
+									.attr("x",color_l.x + i*color_l.box_width)
+									.attr("y",color_l.y)
+									.attr("width",color_l.box_width)
+									.attr("height",color_l.box_height)
+									.attr("fill",color(age_min + i*age_quant))
+									.attr("stroke","gray")
+							}
+							let contrast_border_space = 3
+							svg.append("rect")	
+								.attr("x",color_l.x-contrast_border_space)
+								.attr("y",color_l.y-contrast_border_space)
+								.attr("width",color_l.box_width*5+2*contrast_border_space)
+								.attr("height",color_l.box_height+2*contrast_border_space)
+								.attr("fill","transparent")
+								.attr("stroke",color(age_min + 2*age_quant))
+								.attr("stroke-width",contrast_border_space+2)
+							// Label legend
+							function add_legend_label(x,y,text){
+								svg.append("text")
+									.attr("x",x)
+									.attr("y",y)
+									.attr("font-family","sans-serif")
+									.attr("font-size",10)
+									.attr("fill","gray")
+									.text(text)
+							}
+							add_legend_label(color_l.x - 70,
+											 color_l.y + 8,
+											 "Median ages")
+							for (let i = 0; i <= 5 ; i+= 1){
+								add_legend_label(color_l.x + i*color_l.box_width - 8,
+												 color_l.y +30,
+												 Math.floor((age_min + i*age_interval)*10)/10)
+							}
+							add_legend_label(distro_l.x - 12.5 * distro_l.scale + 5,
+											 distro_l.y - 9 * distro_l.scale + 10,
+											 "State")
+							add_legend_label(distro_l.x + 18*distro_l.scale + 5,
+											 distro_l.y - 5.56*distro_l.scale + 3,
+											 "5.56% (equal distribution)")
+							add_legend_label(distro_l.x + 7*distro_l.scale,
+											 distro_l.y + 20,
+											 "Age")
+							add_legend_label(distro_l.x - 45,
+											 distro_l.y - 2*distro_l.scale,
+											 "% of pop.")
+							for (let age of [20,40,60,80]){
+								add_legend_label(distro_l.x + age/5*distro_l.scale - 6,
+												 distro_l.y + 10,
+												 age)
+							}
+
+							svg.selectAll("circle")
+								.data(data)
+								.enter()
+								.append("polygon")
+								.attr("points", (d)=> {
+									let p = projection([d.Long,d.Lat])
+									let bar_gon = minibar(nation[d.Name],p[0]-9,p[1])
+									return bar_gon;
+								})
+								.style("fill", "yellow")
+								.style("stroke", "black")
+								.style("stroke-width", 0.25)
+								.style("opacity", 0.5)
+								.on("mouseover",function(event,d){
+										d3.select(this).style("opacity",1)
+										let [x,y] = d3.select(this).attr("points").split(' ')[0].split(',')
+										let state = d.Abbrev
+										svg.append("text")
+											.attr("id","tooltip")
+											.attr("x",parseFloat(x)-15)
+											.attr("y",parseFloat(y)-10)
+											.attr("font-family","sans-serif")
+											.attr("font-size","15px")
+											.attr("fill","black")
+											.text(state)
+										let legend_x = distro_l.x / distro_l.scale
+										let legend_y = distro_l.y / distro_l.scale
+										let legend_bars = minibar(nation[d.Name],legend_x,legend_y)
+										d3.select("#magnified_distro")
+											.attr("points",legend_bars)
+										d3.select("#magnified_abbrev")
+											.text(d.Abbrev)
+								})
+								.on("mouseout",function(event,d){
+									d3.select(this).style("opacity",0.5);
+									d3.select("#tooltip").remove()
+								})
+						})
+					});
+				});
+			});
+			
+			svg.append("text")
+				.attr("x",100)
+				.attr("y",700)
+				.attr("font-family","sans-serif")
+				.attr("font-size",10)
+				.attr("fill","black")
+				.text("Age data downloaded from https://data.census.gov/table/ACSST1Y2023.S0101?q=Age%20and%20Sex&g=010XX00US,$0400000")
+			svg.append("text")
+				.attr("x",270)
+				.attr("y",750)
+				.attr("font-family","sans-serif")
+				.attr("font-size",15)
+				.attr("font-weight","bold")
+				.attr("fill","black")
+				.text("Scroll down for tax map")
+			
+			let svg_2 = d3.select("body")
+							.append("svg")
+							.attr("width",w)
+							.attr("height",h)
+			let row_converter = (d)=>{
+				return {
+					state: d.State,
+					total: parseInt(d["Total Taxes"].replace(/,/g,'')),
+					sales: parseInt(d["Sales and Gross Receipts Taxes"].replace(/,/g,''))
+					// prop: parseInt(d["Property Taxes"].replace(/,/g,'')),
+					// income: parseInt(d["Income Taxes"].replace(/,/g,''))
+				}
+			}
+			d3.csv("us_taxes.csv", row_converter).then((taxes)=>{
+				console.log("Taxes",taxes)
+				let nation_sales = {}
+				for (let state of taxes){
+					if (state.state==='DC'){
+						nation_sales["District of Columbia"] = state.sales
+					}
+					nation_sales[state.state] = state.sales
+				}
+				let nation_totals = {}
+				for (let state of taxes){
+					if (state.state==='DC'){
+						nation_totals["District of Columbia"] = state.total
+					}
+					nation_totals[state.state] = state.total
+				}
+				let sales_max = d3.max(taxes,d=>d.sales)
+
+				let total_min = d3.min(taxes, d=>d.total)
+				let total_max = d3.max(taxes, d=>d.total)
+
+				//Set input domain for color scale
+				const colors_2 = 8
+				let color_2 = d3.scaleQuantize()
+								.range(["rgb(122,218,119)","rgb(99,211,95)","rgb(75,205,71)","rgb(57,192,53)","rgb(50,168,46)","rgb(43,144,39)","rgb(36,120,33)","rgb(29,96,26)"]);
+				color_2.domain([total_min,total_max]);
+
+				svg_2.append("text")
+					.attr("x",255)
+					.attr("y",110)
+					.attr("font-size",36)
+					.attr("font-family","sans-serif")
+					.attr("font-weight","bold")
+					.attr("fill","black")
+					.text("Tax by US State")
+				svg_2.append("text")
+					.attr("x",240)
+					.attr("y",135)
+					.attr("font-size",10)
+					.attr("font-family","sans-serif")
+					.attr("fill","gray")
+					.text("Hover over the yellow dot for details. Dot size -> sales tax collected")
+
+				// Make legend
+				let tax_range = total_max - total_min
+				let tax_quant = tax_range / (colors_2 - 1)
+				let tax_interval = tax_range / colors_2
+				let color_l = {x:175,y:180,box_width:30,box_height:15}
+				for (let i = 0; i < colors_2 ; i+= 1){
+					svg_2.append("rect")	
+						.attr("x",color_l.x + i*color_l.box_width)
+						.attr("y",color_l.y)
+						.attr("width",color_l.box_width)
+						.attr("height",color_l.box_height)
+						.attr("fill",()=>{console.log(i*tax_quant);return color_2(i*tax_quant)})
+						.attr("stroke","gray")
+				}
+				let contrast_border_space = 3
+				svg_2.append("rect")	
+					.attr("x",color_l.x-contrast_border_space)
+					.attr("y",color_l.y-contrast_border_space)
+					.attr("width",color_l.box_width*colors_2+2*contrast_border_space)
+					.attr("height",color_l.box_height+2*contrast_border_space)
+					.attr("fill","transparent")
+					.attr("stroke",color_2(total_min+tax_range/2))
+					.attr("stroke-width",contrast_border_space+2)
+				// Label legend
+				function add_legend_label(x,y,text){
+					svg_2.append("text")
+						.attr("x",x)
+						.attr("y",y)
+						.attr("font-family","sans-serif")
+						.attr("font-size",10)
+						.attr("fill","gray")
+						.text(text)
+				}
+				add_legend_label(color_l.x - 60,
+									color_l.y + 8,
+									"Total taxes")
+				for (let i = 0; i <= colors_2 ; i+= 1){
+					add_legend_label(color_l.x + i*color_l.box_width - 8,
+										color_l.y +30,
+										Math.floor((i*tax_interval)/1000000) + "M")
+				}
+
+				//Load in GeoJSON data
+				//Updated load for v5 beyond
+				d3.json("us-states.json").then (function(json) {
+
+					//Merge the age data and GeoJSON
+					//Loop through once for each age data value
+					for (let i = 0; i < taxes.length; i++) {
+				
+						let dataState = taxes[i].state;				//Grab state name
+						let dataValue = parseFloat(taxes[i].total);	//Grab data value, and convert from string to float
+				
+						//Find the corresponding state inside the GeoJSON
+						for (let j = 0; j < json.features.length; j++) {
+						
+							let jsonState = json.features[j].properties.name;
+				
+							if (dataState == jsonState) {
+						
+								//Copy the data value into the JSON
+								json.features[j].properties.value = dataValue;
+								
+								//Stop looking through the JSON
+								break;
+								
+							}
+						}		
+					}
+
+					//Bind data and create one path per GeoJSON feature
+					svg_2.selectAll("path")
+					   .data(json.features)
+					   .enter()
+					   .append("path")
+					   .attr("d", path)
+					   .style("fill", (d)=> {
+					   		//Get data value
+					   		let value = d.properties.value;
+					   		
+					   		if (value) {
+					   			//If value exists…
+						   		return color_2(value);
+					   		} else {
+					   			//If value is undefined…
+						   		return "#ccc";
+					   		}
+					   });
+
+					//Load in cities data
+					//Updated load
+					d3.csv("statecentroids.csv").then( (data)=> {
+						console.log("centroids",data)
+						svg_2.selectAll("circle")
+								.data(data)
+								.enter()
+								.append("circle")
+								.attr("cx", (d)=> {return projection([d.Long,d.Lat])[0]})
+								.attr("cy", (d)=> {return projection([d.Long,d.Lat])[1]})
+								.attr("r",(d)=>{
+									return 40 * nation_sales[d.Name] / sales_max
+								})
+								.style("fill", "yellow")
+								.style("stroke", "black")
+								.style("stroke-width", 1)
+								.style("opacity", 0.5)
+								.on("mouseover",function(event,d){
+									let x= d3.select(this).attr("cx")
+									let y= d3.select(this).attr("cy")
+									let state = d.Name
+									let reduce = (num)=>{
+										return Math.floor(num/100000) / 10 + "M"
+									}
+									let texts = ["Total tax: "+reduce(nation_totals[state]),"Sales tax: "+reduce(nation_sales[state]),state]
+									let sizes = [10,10,15]
+									for (let i=0; i<3; i+=1){
+										svg_2.append("text")
+											.attr("id","tooltip_"+i)
+											.attr("x",parseFloat(x)-20)
+											.attr("y",parseFloat(y)-(10+i*12))
+											.attr("font-family","sans-serif")
+											.attr("font-size",sizes[i])
+											.attr("font-weight","bold")
+											.attr("fill","black")
+											.text(texts[i])
+									}
+									d3.select(this).style("opacity",1)
+								})
+								.on("mouseout",function(event,d){
+									d3.select(this).style("opacity",0.5);
+									for (let i=0;i<3;i+=1){
+										d3.select("#tooltip_"+i).remove()
+									}
+								})
+
+				
+			})})})
+		</script>
+	</body>
+</html>

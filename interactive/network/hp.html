@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <title>The enemy of my enemy...</title>
+        <script type="text/javascript" src="../../d3.js"></script>
+    </head>
+    <body>
+        <p>Data thanks to https://github.com/gauthammk/Harry-Potter-Network-Analysis/blob/master/graph.json</p>
+        <script type="text/javascript">
+            const w = 800
+            const h = 800
+            let name_offset = 5
+            let svg = d3.select("body")
+                        .append("svg")
+                            .attr("width",w)
+                            .attr("height",h)
+            svg.append("rect")
+                .attr("x",180)
+                .attr("y",37)
+                .attr("width",15)
+                .attr("height",15)
+                .attr("stroke","black")
+                .attr("fill","lightblue")
+                .on("click",(event,d)=>{
+                    d3.selectAll(".edge").attr("visibility","visible")
+                })
+            svg.append("text")
+                .attr("x",15)
+                .attr("y",50)
+                .attr("font-family","sans-serif")
+                .attr("font-size","15px")
+                .attr("fill","black")
+                .text("Click to restore edges:")
+            svg.append("text")
+                .attr("x",15)
+                .attr("y",25)
+                .attr("font-family","sans-serif")
+                .attr("font-size","15px")
+                .attr("fill","black")
+                .text("Click nodes to isolate edges")
+            svg.append("text")
+                .attr("x",15)
+                .attr("y",75)
+                .attr("font-family","sans-serif")
+                .attr("font-size","15px")
+                .attr("fill","black")
+                .text("Negative relationships are red, positive are blue")
+
+            d3.json("hp.json").then(function(json){
+                console.log("json",json)
+
+                let hp = {}
+                hp.people = json.nodes
+                hp.relationships = json.links
+
+                for (let i = 0; i<hp.relationships.length;i+=1){
+                    hp.relationships[i].source = parseInt(hp.relationships[i].source)
+                    hp.relationships[i].target = parseInt(hp.relationships[i].target)
+                }
+
+                let force = d3.forceSimulation(hp.people)
+                              .velocityDecay(0.01)
+                              .force("charge",d3.forceManyBody().strength(-350))
+                              .force("link",d3.forceLink(hp.relationships).distance((d)=>{
+                                    if (d.Relationship === "-"){
+                                        return 10
+                                    }
+                                    return 1
+                              }))
+                              .force("center",d3.forceCenter().x(w/2).y(h/2))
+
+                              .force("collide",d3.forceCollide(10));
+                function name_class(node){
+                    return node.name.replaceAll(" ","_").replaceAll(".","").replaceAll("\"","")
+                }
+                let edges = svg.selectAll("line")
+                                .data(hp.relationships)
+                                .enter()
+                                .append("line")
+                                .attr("class",(d)=>{return name_class(d.source)+" "+name_class(d.target)+" edge"})
+                                .style("stroke",(d)=>{
+                                    if(d.type === "+"){return "royalblue"}
+                                    return "firebrick"
+                                })
+                                .style("stroke-width",2)
+
+                let nodes = svg.selectAll("circle")
+                                .data(hp.people)
+                                .enter()
+                                .append("circle")
+                                .attr("r",5)
+                                .style("fill","black")
+                                .on("mouseover",function(event,d){
+                                    svg.append("text")
+                                        .attr("id","name")
+                                        .attr("fill","black")
+                                        .attr("x",d.x + name_offset)
+                                        .attr("y",d.y - name_offset)
+                                        .attr("font-size","14px")
+                                        .attr("font-family","sans-serif")
+                                        .text(d.name)
+                                })
+                                .on("mouseout",()=>{
+                                    d3.select("#name").remove()
+                                })
+                                .on("click",(event,d)=>{
+                                    d3.selectAll(".edge").attr("visibility","hidden")
+                                    d3.selectAll("."+name_class(d)).attr("visibility","visible")
+                                })
+                force.on("tick",function(){
+                    edges.attr("x1",d=>d.source.x)
+                         .attr("y1",d=>d.source.y)
+                         .attr("x2",d=>d.target.x)
+                         .attr("y2",d=>d.target.y)
+                    
+                    nodes.attr("cx",d=>d.x)
+                         .attr("cy",d=>d.y)
+                })
+            })
+        </script>
+    </body>
+</html>
