@@ -1,0 +1,611 @@
+<html lang="en">
+    <head>
+        <title>Quesadillas 2021</title>
+        <script type="text/javascript" src="d3.js"></script>
+    </head>
+    <body>
+        <script type="text/javascript">
+            let true_width = 1400
+            let w = 1200
+            let h = 800
+            let margin = 30
+            let svg = d3.select("body")
+                        .append("svg")
+                        .attr("width",true_width)
+                        .attr("height",h)
+                        .attr("viewBox", [-w / 2, -h / 2, true_width, h])
+
+            let simplify = function(d, key){
+                if (d[key]==''){
+                    return []
+                }
+                let as_array = d[key].split("/")
+                for (let i = 0; i < as_array.length; i+=1){
+                    as_array[i] = as_array[i].toLowerCase()
+                }
+                return as_array
+            }
+            let row_converter = function(d){ 
+                let veggie = simplify(d, "Veggie")
+                veggie.push(...simplify(d,"Green"))
+                return {
+                    tortilla: simplify(d, "Tortilla"),
+                    cheese: simplify(d, "Cheese"),
+                    sauce: simplify(d, "Sauce"),
+                    meat: simplify(d, "Meat"),
+                    veg: veggie,
+                    bean: simplify(d, "Bean"),
+                    month: d.Date.split("-")[1]
+                }
+            }
+            d3.csv("Quesadillas.csv",row_converter).then((data)=>{
+                // console.log(data)
+                const ingredients = ['tortilla','cheese','sauce','meat','veg','bean']
+                const months = ["Jan", "Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+                const option_colors = {
+                        wheat: "wheat",
+                        "yellow corn": "yellow",
+                        "blue corn": "rebeccapurple",
+                        "both corn": "skyblue",
+                        other: "slategray",
+                        white: "seashell",
+                        orange: "tomato",
+                        both: "orange",
+                        veg: "rgb(177,233,175)",
+                        meat: "firebrick",
+                        bean: "palevioletred",
+                        sauce: "powderblue"
+                    }
+                const bar_chart_vert = h/3
+                let month_scale = d3.scaleOrdinal()
+                                    .domain(months)
+                                    .range([0,1,2,3,4,5,6,7,8,9,10,11])
+                let simplifications = simplify_ingredients()
+
+                function simplify_ingredients(){   
+                    let reverse_simplifications = {
+                        tortilla: {
+                            "wheat": ["raw", "mission", "mission raw", "jalapeno raw", "flour", "wheat", "raw wheat", "some", "don julio", "naan", "kamut"],
+                            "yellow corn": ["yellow", "corn", "pan"],
+                            "blue corn": ["azul"]
+                        },
+                        cheese: {
+                            orange: ["cheddar", "outer cheddar", "sharp cheddar", "cache mild", "cache medium", "mac&", "queso", "violife", "daiya cheddar","miyoko", "homemade", "tostitos"],
+                            both: ["colby jack", "tillamook colby", "cache colby", "fiesta", "mexican", "muenster", "some"],
+                            white: ["tillamook sharp white", "tillamook extra sharp white", "outer tillamook extra sharp white", "gouda", "mozzarella", "fresh mozzarella", "cache mozzarella", "feta", "goat", "swiss", "cream", "mexican crumbling", "ricotta", "mascarpone", "brie", "monterey jack", "cache monterey", "outer monterey", "parmesan", "garden veg", "paneer", "chihuahua", "oaxaca", "provolone", "gruyere", "havarti", "sharp wisconsin", "edam", "cottage"],
+                        }
+                    }
+                    let simplifications = {}
+                    for (let category in reverse_simplifications){
+                        simplifications[category] = {}
+                        for (let subcategory in reverse_simplifications[category]){
+                            for (let detail of reverse_simplifications[category][subcategory]){
+                                simplifications[category][detail] = subcategory
+                            }
+                        }
+                    }
+                    simplifications['bean'] = 'bean'
+                    simplifications['meat'] = 'meat'
+                    simplifications['veg'] = 'veg'
+                    simplifications['sauce'] = 'sauce'
+                    return simplifications
+                }
+                function make_bins(months, ingredients, simplifications){
+                    let bins = {}
+                    let tortillas = ['wheat', 'yellow corn', 'blue corn', 'both corn', 'other']
+                    let cheeses = ["white", "orange", "both"]
+                    let increment_count = function(month, ingredient, detail, increment=1, subcategory=''){
+                        if (subcategory == ''){
+                            subcategory = simplifications[ingredient][detail]
+                        }
+                        bins[month][ingredient][subcategory]['total'] += increment
+                        if (detail in bins[month][ingredient][subcategory]){
+                            bins[month][ingredient][subcategory][detail] += increment
+                        }
+                        else{
+                            bins[month][ingredient][subcategory][detail] = increment
+                        }
+                    }
+                    for (let month of months){
+                        bins[month] = {}
+                        for (let ingredient of ingredients){
+                            bins[month][ingredient] = {}
+                            bins[month][ingredient][ingredient] = {}
+                            bins[month][ingredient][ingredient]['total'] = 0
+                        }
+                        for (let tortilla of tortillas){bins[month]["tortilla"][tortilla] = {total: 0}}
+                        for (let cheese of cheeses){bins[month]["cheese"][cheese] = {total: 0}}
+                        
+                        for (let day of data){
+                            if (month != day.month){
+                                continue
+                            }
+                            for (let ingredient of ingredients){
+                                if (ingredient == 'tortilla'){
+                                    if (day[ingredient].length === 0){
+                                        // don't consider other ingredients, b/c if there's no tortilla, there's no quesadilla
+                                        break
+                                    }
+                                    if (day[ingredient].length === 1){
+                                        increment_count(month, 'tortilla', day[ingredient][0])
+                                    }
+                                    else {
+                                        let group = new Set()
+                                        let details = day[ingredient]
+                                        let normalizer = 1 / details.length
+                                        for (let detail of details){
+                                            group.add(simplifications.tortilla[detail])
+                                        }
+                                        let iterate_increment = function(subcategory){
+                                            for (let detail of details){
+                                                increment_count(month, 'tortilla', detail, increment=normalizer, subcategory)
+                                            }
+                                        }
+                                        
+                                        if (group.size === 1){
+                                            iterate_increment(group.values().next().value)
+                                        }
+                                        else if(group.size === 2 && group.has('yellow corn') && group.has('blue corn')){
+                                            iterate_increment('both corn')
+                                        }
+                                        else{iterate_increment('other')}
+                                    }
+                                }
+                                else if(ingredient == 'cheese'){
+                                    if (day[ingredient].length === 1){
+                                        increment_count(month, 'cheese', day[ingredient][0])
+                                    }
+                                    else {
+                                        let group = new Set()
+                                        let details = day[ingredient]
+                                        let normalizer = 1 / details.length
+                                        for (let detail of details){
+                                            group.add(simplifications.cheese[detail])
+                                        }
+                                        let iterate_increment = function(subcategory){
+                                            for (let detail of details){
+                                                increment_count(month, 'cheese', detail, increment=normalizer, subcategory)
+                                            }
+                                        }
+
+                                        if (group.size === 1){
+                                            iterate_increment(group.values().next().value)
+                                        }
+                                        else if(group.size === 2){
+                                            iterate_increment('both')
+                                        }
+                                    }
+                                }
+                                else{
+                                    if (day[ingredient].length > 0){
+                                        let normalizer = 1 / day[ingredient].length
+                                        for (let i = 0; i<day[ingredient].length; i+=1){
+                                            increment_count(month, ingredient, day[ingredient][i], normalizer, ingredient)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    return bins
+                }   
+                function make_bars(){
+                    let origin = {x: -w/2+margin, y:-h/2+bar_chart_vert+margin}
+                    let bar_x_scale = d3.scaleLinear()
+                                        .domain([0,12]) // leave room for december at the end
+                                        .range([origin.x,-origin.x])
+                    let bar_x_axis = d3.axisBottom()
+                                        .scale(bar_x_scale)
+                                        .ticks(0)
+                    let bar_y_scale = d3.scaleLinear()
+                                        .domain([0,31])
+                                        .range([origin.y,-h/2+2*margin])
+                    let bar_y_axis = d3.axisLeft()
+                                        .scale(bar_y_scale)
+                                        .ticks(5)
+
+                    svg.append("g")
+                    .attr("id","bar_y_axis")
+                    .attr("class","axis")
+                    .attr("transform", "translate("+origin.x+", 0)")
+                    .call(bar_y_axis)
+                    svg.append("g")
+                    .attr("id","bar_x_axis")
+                    .attr("class","axis")
+                    .attr("transform", "translate(0, "+origin.y+")")
+                    .call(bar_x_axis)
+                    svg.selectAll('bar_months')
+                        .data(months)
+                        .enter()
+                        .append('text')
+                        .attr('x',(d)=>{return bar_x_scale(month_scale(d))})
+                        .attr("y",d=>bar_y_scale(-2))
+                        .attr("font-size",12)
+                        .attr("font-family","sans-serif")
+                        .attr("fill","black")
+                        .attr("font-weight","bold")
+                        .text(d=>d)
+                    svg.append("text")
+                        .attr("font-family","sans-serif")
+                        .attr("font-size",25)
+                        .attr("fill","black")
+                        .attr('x',bar_x_scale(3))
+                        .attr("y",bar_y_scale(35))
+                        .text("Quesadilla Ingredient Distribution Throughout 2021")
+
+                    for (let month in bins){
+                        let ingredient_offset = 0
+                        for (let ingredient in bins[month]){
+                            let option_offset = 0
+                            for (let option in bins[month][ingredient]){
+                                let option_count = bins[month][ingredient][option].total
+                                svg.append("rect")
+                                    .attr("x",(bar_x_scale(month_scale(month)) + ingredient_offset))
+                                    .attr("y",(bar_y_scale(option_count + option_offset)))
+                                    .attr("width",10)
+                                    .attr("height",(origin.y - bar_y_scale(option_count)))
+                                    .attr("fill",option_colors[option])
+                                    .attr("stroke","black")
+                                    .attr("stroke-width",0.25)
+                                    .attr("class",()=>{return ingredient + " ingredient_bar " + option.replace(' ','_')})
+                                    .on('mouseover',function(event){
+                                        svg.selectAll(".pie_text").remove()
+                                        svg.selectAll(".pie_sections").remove()
+                                        svg.selectAll(".option_line").remove()
+                                        let names = Object.keys(bins[month][ingredient][option])
+                                        let values = Object.values(bins[month][ingredient][option])
+                                        let pie_data = []
+                                        for (let i = 0; i<names.length;i+=1){
+                                            if (names[i] != 'total'){
+                                                pie_data.push({name: names[i], value: Math.floor(values[i]/values[names.indexOf('total')]*100)/100})
+                                            }
+                                        }
+                                        make_pie(pie_data, option, month)
+                                        let option_line = []
+                                        for (let imonth in bins){
+                                            option_line.push({month: imonth, value: bins[imonth][ingredient][option].total})
+                                        }
+                                        make_line(option_line,option)
+                                        svg.selectAll(".ingredient_bar").attr("visibility","hidden")
+                                        svg.selectAll("."+ingredient).attr("visibility","visible")
+                                        svg.selectAll("."+option.replace(" ","_")).attr("stroke-width",1)
+                                        let x_pos = parseFloat(d3.select(this).attr('x')) + 12
+                                        let y_pos = parseFloat(d3.select(this).attr('y'))
+                                        svg.append("text")
+                                            .attr("id","bar_tooltip")
+                                            .attr("x",x_pos)
+                                            .attr("y",y_pos)
+                                            .attr("font-size",10)
+                                            .attr("font-family","sans-serif")
+                                            .attr("fill","black")
+                                            .text(()=>{
+                                                return ingredient + ", " + option
+                                            })
+                                    })
+                                    .on("click",function(event){
+                                        svg.selectAll(".network").remove()
+                                        let monthly_network = gather_network(data, simplifications)
+                                        plot_network(monthly_network[month], month)
+                                    })
+                                    .on('mouseout',function(event){
+                                        svg.selectAll(".ingredient_bar").attr("visibility","visible")
+                                        svg.selectAll("."+option.replace(" ","_")).attr("stroke-width",0.25)
+                                        svg.select("#bar_tooltip").remove()
+                                    })
+                                option_offset += option_count
+                            }
+                            ingredient_offset += 12
+                        }
+                    }
+                }
+                function make_pie(pie_data, category, month){
+                    // console.log(pie_data)
+                    const radius = 150
+                    const arc = d3.arc()
+                                  .innerRadius(radius * 0.5)
+                                  .outerRadius(radius)
+                    const pie = d3.pie()
+                                  .padAngle(1/radius)
+                                  .sort(null)
+                                  .value(d=>d.value)
+                    const color = d3.scaleOrdinal()
+                                    .domain(pie_data.map(d=>d.name))
+                                    .range(d3.quantize(t=>d3.interpolateSpectral(t * 0.5 + 0.3), pie_data.length+1))
+                    let x_offset = -3*w/8
+                    let y_offset = h/10
+                    svg.append('g')
+                        .selectAll()
+                        .data(pie(pie_data))
+                        .join('path')
+                        .attr("class","pie_sections")
+                        .attr('fill',d=>color(d.data.name))
+                        .attr('d',arc)
+                        .attr('transform',`translate(${x_offset},${y_offset})`)
+                    svg.append("g")
+                        .attr("font-family", "sans-serif")
+                        .attr("font-size", 12)
+                        .attr("text-anchor", "middle")
+                        .selectAll()
+                        .data(pie(pie_data))
+                        .join("text")
+                        .attr("class","pie_text")
+                        .attr("transform", (d) => {
+                            let point = arc.centroid(d)
+                            point[0] += x_offset
+                            point[1] += y_offset
+                            return `translate(${point})`
+                        })
+                        .call(text => text.append("tspan")
+                            .attr("y", "-0.4em")
+                            .attr("font-weight", "bold")
+                            .text((d) => {return d.data.name}))
+                        .call(text => text.append("tspan")
+                            .attr("x", 0)
+                            .attr("y", "0.7em")
+                            .attr("fill-opacity", 0.7)
+                            .text(d => d.data.value))
+                    svg.append("text")
+                            .attr("x",x_offset)
+                            .attr("y",y_offset)
+                            .attr("class","pie_text")
+                            .attr("text-anchor","middle")
+                            .attr("font-family","sans-serif")
+                            .attr("font-size",14)
+                            .attr("font-weight","bold")
+                            .attr("fill","black")
+                            .text(`${category.charAt(0).toUpperCase() + category.slice(1)} in ${month}`)
+                    
+                }
+                function make_line(line_data,option){
+                    let color = option_colors[option]
+                    let origin = {x: -w/5, y: h/4}
+                    let line_x_scale = d3.scaleLinear()
+                                        .domain([0,11]) // leave room for december at the end
+                                        .range([origin.x,w/7])
+                    let line_x_axis = d3.axisBottom()
+                                        .scale(line_x_scale)
+                                        .ticks(0)
+                    let line_y_scale = d3.scaleLinear()
+                                        .domain([0,31])
+                                        .range([origin.y,origin.y - h/4])
+                    let line_y_axis = d3.axisLeft()
+                                        .scale(line_y_scale)
+                                        .ticks(5)
+
+                    svg.append("g")
+                        .attr("id","line_y_axis")
+                        .attr("class","axis option_line")
+                        .attr("transform", "translate("+origin.x+", 0)")
+                        .call(line_y_axis)
+                    svg.append("g")
+                        .attr("id","line_x_axis")
+                        .attr("class","axis option_line")
+                        .attr("transform", "translate(0, "+origin.y+")")
+                        .call(line_x_axis)
+                    svg.selectAll('line_months')
+                        .data(months)
+                        .enter()
+                        .append('text')
+                        .attr('x',(d)=>{return line_x_scale(month_scale(d))})
+                        .attr("y",d=>line_y_scale(-2))
+                        .attr("font-size",12)
+                        .attr("font-family","sans-serif")
+                        .attr("fill","black")
+                        .attr("font-weight","bold")
+                        .attr("class","option_line")
+                        .text(d=>d)
+                    svg.append("text")
+                        .attr("font-family","sans-serif")
+                        .attr("font-size",15)
+                        .attr("fill","black")
+                        .attr("class",'option_line')
+                        .attr('x',line_x_scale(5.5))
+                        .attr("y",line_y_scale(35))
+                        .attr("text-anchor","middle")
+                        .text(`${option.charAt(0).toUpperCase() + option.slice(1)} Frequency`)
+                    
+                    let line = d3.line()
+                                 .x(d=>line_x_scale(month_scale(d.month)))
+                                 .y(d=>line_y_scale(d.value))
+                    svg.append('path')
+                        .attr("class","option_line")
+                        .datum(line_data)
+                        .attr('d',line)
+                        .attr("stroke-width",2)
+                        .attr("stroke",color)
+                        .attr("stroke-opacity",1)
+                        .attr("fill","none")
+                }
+                function gather_network(network_data){
+                    let year = {}
+                    for (let month of months){
+                        let network = {nodes: [], edges: []}
+                        year[month] = network
+                    }
+                    for (let month of months){
+                        let node_tracker = []
+                        let edge_tracker = []
+                        for (let day in network_data){
+                            if (network_data[day].month != month){
+                                continue
+                            }
+                            let source_list = []
+                            for (let category in network_data[day]){
+                                if (category === 'month'){
+                                    continue
+                                }
+                                let ingredients = network_data[day][category]
+                                if (ingredients.length === 0){
+                                    continue
+                                }
+                                for (let ingredient of ingredients){
+                                    let node_index = node_tracker.indexOf(ingredient)
+                                    if (node_index === -1){
+                                        node_tracker.push(ingredient)
+                                        let option
+                                        if (category == "tortilla" || category == "cheese"){
+                                            option = simplifications[category][ingredient]
+                                            if (option == undefined){
+                                                option = 'other'
+                                            }
+                                        }
+                                        else{option = simplifications[category]}
+                                        year[month].nodes.push({name: ingredient, color: option_colors[option]})
+                                        node_index = node_tracker.length - 1
+                                    }
+                                    for (let source of source_list){
+                                        let edge_string = `${source} + ${node_index}`
+                                        let edge_index = edge_tracker.indexOf(edge_string)
+                                        if (edge_index === -1){
+                                            edge_tracker.push(edge_string)
+                                            year[month].edges.push({source: source, target: node_index, weight: 1})
+                                        }
+                                        else{
+                                            year[month].edges[edge_index].weight += 1
+                                        }
+                                    }
+                                    source_list.push(node_index)
+                                }
+                            }
+                        }
+                    }
+                    return year
+                }
+                function plot_network(month_network, month){
+                    svg.append("text")
+                        .attr("class","network")
+                        .attr("x",w/3)
+                        .attr("y",-h/30)
+                        .attr("text-anchor","middle")
+                        .attr("font-size",14)
+                        .attr("font-family","sans-serif")
+                        .text(`Ingredient Co-occurrence in ${month}`)
+                    svg.append("text")
+                        .attr("class","network")
+                        .attr("x",w/3)
+                        .attr("y",-h/60)
+                        .attr("text-anchor","middle")
+                        .attr("font-size",10)
+                        .attr("font-family","sans-serif")
+                        .text(`Thicker edge = more co-occurrence`)
+                    let force = d3.forceSimulation(month_network.nodes)
+                                  .velocityDecay(0.5)
+                                  .force("charge",d3.forceManyBody().strength(-100).distanceMax(w/6))
+                                  .force('link',d3.forceLink(month_network.edges).distance((d)=>{
+                                        return 30 / d.weight**2
+                                  }))
+                                  .force('center',d3.forceCenter().x(w/3).y(h/6).strength(1.1))
+                                  .force('collide',d3.forceCollide(6))
+                    let edges = svg.selectAll('edges')
+                                    .data(month_network.edges)
+                                    .join("line")
+                                    .attr("class","network")
+                                    .style("stroke","gray")
+                                    .style("stroke-width",d=>d.weight*0.25)
+                    let nodes = svg.selectAll("nodes")
+                                    .data(month_network.nodes)
+                                    .join("circle")
+                                    .attr("class","network")
+                                    .attr("r",4)
+                                    .style('fill',d=>d.color)
+                                    .style("stroke","black")
+                                    .style("stroke-width",0.25)
+                                    .on("mouseover",function(event,d){
+                                        let xPosition = parseFloat(d3.select(this).attr("cx")) + 5;
+                                        let yPosition = parseFloat(d3.select(this).attr("cy")) - 5;
+                                        svg.append("text")
+                                            .attr("id","net_tooltip")
+                                            .attr("x",xPosition)
+                                            .attr("y",yPosition)
+                                            .attr("font-size",10)
+                                            .attr("font-weight","bold")
+                                            .attr("font-family","sans-serif")
+                                            .attr("fill","black")
+                                            .text(d.name)
+                                    })
+                                    .on("mouseout",()=>{
+                                        svg.select("#net_tooltip").remove()
+                                    })
+                    force.on("tick",function(){
+                        edges.attr("x1",d=>d.source.x)
+                            .attr("y1",d=>d.source.y)
+                            .attr("x2",d=>d.target.x)
+                            .attr("y2",d=>d.target.y)
+                        
+                        nodes.attr("cx",d=>d.x)
+                            .attr("cy",d=>d.y)
+                    })
+                }
+                function make_legend(){
+                    let offset = 15
+                    svg.append("text")
+                            .attr("x", w/2)
+                            .attr("y", -h/2 + margin)
+                            .attr("font-size",20)
+                            .attr("font-weight","bold")
+                            .attr("font-family","sans-serif")
+                            .attr("fill","black")
+                            .text("Legend")
+
+                    for (let option in option_colors){
+                        let square_d = 15
+                        svg.append("rect")
+                            .attr("x", w/2)
+                            .attr("y", -h/2 + offset + margin)
+                            .attr("width",square_d)
+                            .attr("height",square_d)
+                            .attr("fill",option_colors[option])
+                            .attr("stroke",'black')
+                            .attr("stroke-width",0.25)
+                        svg.append("text")
+                            .attr("x", w/2 + square_d + 2)
+                            .attr("y", -h/2 + offset + margin + square_d-3)
+                            .attr("font-size",12)
+                            .attr("font-family","sans-serif")
+                            .attr("fill","black")
+                            .text(option)
+                            
+                        offset += 25
+                    }
+                }
+                function add_instructions(){
+                    let instruction_origin = {x: -w/2 + margin, y: h/10 + 165}
+                    svg.append("text")
+                        .attr("font-family","sans-serif")
+                        .attr("font-size",18)
+                        .attr("font-weight","bold")
+                        .attr("fill","black")
+                        .attr("x",instruction_origin.x)
+                        .attr("y",instruction_origin.y)
+                        .text("Instructions:")
+                    svg.append("text")
+                        .attr("font-family","sans-serif")
+                        .attr("font-size",16)
+                        .attr("fill","black")
+                        .attr("x",instruction_origin.x)
+                        .attr("y",instruction_origin.y + 20)
+                        .text("Hover over a bar for (1) pie chart of the category's ingredients and (2) the category's trend")
+                    svg.append("text")
+                        .attr("font-family","sans-serif")
+                        .attr("font-size",16)
+                        .attr("fill","black")
+                        .attr("x",instruction_origin.x)
+                        .attr("y",instruction_origin.y + 40)
+                        .text("Click on a bar to see ingredient co-occurrence for that month")
+                    svg.append("text")
+                        .attr("font-family","sans-serif")
+                        .attr("font-size",16)
+                        .attr("fill","black")
+                        .attr("x",instruction_origin.x)
+                        .attr("y",instruction_origin.y + 60)
+                        .text("Hover over a node for more info")
+                }
+                let bins = make_bins(months, ingredients, simplifications)
+                // console.log(bins)
+                make_bars()
+                make_legend()
+                add_instructions()
+            })
+        </script>
+    </body>
+</html>
