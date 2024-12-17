@@ -1,0 +1,201 @@
+<html>
+    <head>
+        <title>Bar Transitions</title>
+        <script type="text/javascript" src="d3.js"></script>
+    </head>
+    <body>
+        <script type="text/javascript">
+            let w = 800
+            let h = 400
+            let margin = 30
+
+            let svg = d3.select("body")
+                        .append("svg")
+                        .attr("height", h)
+                        .attr("width", w)
+            let int_row = function(d) {
+                return {
+                    time: parseInt(d.time),
+                    a: parseInt(d.a),
+                    b: parseInt(d.b),
+                    c: parseInt(d.c)
+                }
+            }
+            d3.csv("barinput.csv", int_row).then((data)=>{
+                console.log(data)
+                let id_spacing = 8
+                let ids = ["a","b","c"]
+                let colors = ["navy","gray","gold"]
+
+                let xmax = d3.max(data, (d)=>{
+                    return d.time
+                })
+                let x_scale = d3.scaleLinear()
+                                .domain([1,xmax + 1])
+                                .range([margin, w-margin-margin])
+                let x_axis = d3.axisBottom()
+                               .scale(x_scale)
+                               .ticks(xmax)
+                svg.append("g")
+                   .attr("class", "axis")
+                   .attr("transform","translate(0,"+(h-margin)+")")
+                   .call(x_axis)
+
+                let amax = d3.max(data, (d)=>{return d.a})
+                let bmax = d3.max(data, (d)=>{return d.b})
+                let cmax = d3.max(data, (d)=>{return d.c})
+                let ymax = d3.max([amax,bmax,cmax])
+                let y_scale = d3.scaleLinear()
+                                .domain([0,ymax])
+                                .range([h-margin,margin])
+                let y_axis = d3.axisLeft()
+                               .scale(y_scale)
+                               .ticks(ymax)
+                svg.append("g")
+                   .attr("id","y_axis")
+                   .attr("class","axis")
+                   .attr("transform", "translate("+margin+", 0)")
+                   .call(y_axis)
+                
+                for (let i = 0; i<ids.length; i++){
+                    svg.selectAll(ids[i]+" bars")
+                        .data(data)
+                        .enter()
+                        .append("rect")
+                        .attr("width","5px")
+                        .attr("fill",colors[i])
+                        .attr("x",(d)=>{return x_scale(d.time) + id_spacing*i})
+                        .attr("y",(d)=>{return y_scale(d[ids[i]])})
+                        .attr("height",(d)=>{return h-y_scale(d[ids[i]])-margin})
+                }
+
+                svg.selectAll("trace lines")
+                    .data(data)
+                    .enter()
+                    .append("line")
+                    .attr("x1",margin)
+                    .attr("x2",w-2*margin)
+                    .attr("y1",(d)=>{return y_scale(d.time)})
+                    .attr("y2",(d)=>{return y_scale(d.time)})
+                    .attr("stroke","rgba(0,0,0,0.1)")
+                
+                function chop(row, id){
+                    return {
+                        "time": row.time,
+                        "id": row[id]
+                    }
+                }
+                flattened_data = data.map((d) => {return chop(d,"a")}).concat(data.map((d) => {return chop(d,"b")}), data.map((d) => {return chop(d,"c")}))
+                
+                function adjacent_to_stacked(){
+                    function aggregate_row(row){
+                        return row.a + row.b + row.c
+                    }
+                    stack_max = d3.max(data, (d)=>{return aggregate_row(d)})
+                    y_scale = d3.scaleLinear()
+                                    .domain([0,stack_max])
+                                    .range([h-margin,margin])
+                    function get_height(row){
+                        return h - y_scale(row.id) - margin
+                    }
+                    d3.select("#y_axis").remove()
+                    let new_y_axis = d3.axisLeft()
+                        .scale(y_scale)
+                        .ticks(stack_max)
+                    svg.append("g")
+                        .attr("id","y_axis")
+                        .attr("class","axis")
+                        .attr("transform", "translate("+margin+", 0)")
+                        .call(new_y_axis)
+                    svg.selectAll("rect")
+                        .data(flattened_data)
+                        .transition().duration(1000)
+                        .attr("x",(d)=>{return x_scale(d.time)})
+                        .attr("y",(d, i)=>{
+                            if (i<15){return y_scale(d.id)}
+                            else if (i<30){return y_scale(d.id) - get_height(flattened_data[i-15])}
+                            else {return y_scale(d.id) - get_height(flattened_data[i-15]) - get_height(flattened_data[i-30])}
+                        })
+                        .attr("height",(d)=>{return get_height(d)})
+                        .attr("width","15px")
+                }
+
+                function stacked_to_percent(){
+                    d3.select("#y_axis").remove()
+                    y_scale = d3.scaleLinear().domain([0,1]).range([h-margin,margin])
+                    function get_percent_height(input){
+                        return h - y_scale(input) - margin
+                    }
+                    svg.append("g")
+                        .attr("id","y_axis")
+                        .attr("class","axis")
+                        .attr("transform", "translate("+margin+", 0)")
+                        .call(d3.axisLeft().scale(y_scale).ticks(10))
+                    let max = 0
+                    svg.selectAll("rect")
+                        .data(flattened_data)
+                        .transition().duration(1000)
+                        .attr("y",(d,i)=>{
+                            row = data[i%15]
+                            max = row.a + row.b + row.c
+                            if (i<15){return y_scale(d.id/max)}
+                            else if (i<30){return y_scale(d.id/max) - get_percent_height(flattened_data[i-15].id/max)}
+                            else {return y_scale(d.id/max) - get_percent_height(flattened_data[i-15].id/max) - get_percent_height(flattened_data[i-30].id/max)}
+                        })
+                        .attr("height",(d,i)=>{
+                            row = data[i%15]
+                            let max = row.a + row.b + row.c
+                            return get_percent_height(d.id/max)
+                        })
+                }
+                
+                function percent_to_adjacent(){
+                    let amax = d3.max(data, (d)=>{return d.a})
+                    let bmax = d3.max(data, (d)=>{return d.b})
+                    let cmax = d3.max(data, (d)=>{return d.c})
+                    let ymax = d3.max([amax,bmax,cmax])
+                    let y_scale = d3.scaleLinear()
+                                    .domain([0,ymax])
+                                    .range([h-margin,margin])
+                    let y_axis = d3.axisLeft()
+                               .scale(y_scale)
+                               .ticks(ymax)
+                    d3.select("#y_axis").remove()
+                    svg.append("g")
+                        .attr("id","y_axis")
+                        .attr("class","axis")
+                        .attr("transform", "translate("+margin+", 0)")
+                        .call(y_axis)
+                    svg.selectAll("rect")
+                        .data(flattened_data)
+                        .transition().duration(1000)
+                        .attr("x",(d,i)=>{
+                            let space = Math.floor(i / 15) * id_spacing
+                            return x_scale(d.time)+space
+
+                        })
+                        .attr("width","5px")
+                        .attr("y",(d)=>{return y_scale(d.id)})
+                        .attr("height",(d)=>{return h - y_scale(d.id) - margin})
+                }
+                let i = 0
+                d3.select("svg")
+                    .on("click", ()=>{
+                        if(i===0){
+                            i = 1
+                            return adjacent_to_stacked()
+                        }
+                        else if(i===1){
+                            i = 2
+                            return stacked_to_percent()
+                        }
+                        else if(i===2){
+                            i = 0
+                            return percent_to_adjacent()
+                        }
+                    })
+            })
+            
+        </script>
+    </body>
+</html>

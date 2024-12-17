@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>P2 Plot</title>
+        <script type="text/javascript" src="d3.js"></script>
+    </head>
+    <body>
+        Radius multiplier:
+        <input type="text" id="coef" size="20" onkeydown="update_graph_mult(event)">
+        <button type="button" onclick="color_off()">Make circles black</button>
+        <button type="button" onclick="make_bars()">Turn circles into rectangles</button>
+        <br>
+        Radius power:
+        <input type="text" id="exp" size="20" onkeydown="update_graph_pow(event)">
+        <br>
+
+        <script type="text/javascript">
+            function make_bars() {
+                svg.selectAll("circle")
+                    .attr("fill","rgba(0,0,0,0)")
+                svg.selectAll("rect")
+                    .attr("fill","black")
+                
+            }
+            function color_off() {
+                svg.selectAll("circle")
+                    .attr("fill","black")
+            }
+            function update_graph_mult(event) {
+                if(event.key === "Enter"){
+                    coef_box = document.getElementById("coef")
+                    coef = parseFloat(coef_box.value + event.key)
+                    svg.selectAll("circle")
+                        .attr("r",function() {
+                            prev_r = parseFloat(d3.select(this).attr("r"))
+                            return coef * prev_r
+                        })
+                }
+            }
+            function update_graph_pow(event) {
+                if(event.key === "Enter"){
+                    exp_box = document.getElementById("exp")
+                    exp = parseFloat(exp_box.value + event.key)
+                    svg.selectAll("circle")
+                        .attr("r",function() {
+                            prev_r = parseFloat(d3.select(this).attr("r"))
+                            return prev_r ** exp
+                        })
+                }
+            }
+            let left_label_space = 15
+            let bottom_label_space = 15
+            let top_space = 30
+            let right_margin = 160
+            let h = 600+bottom_label_space+top_space
+            let w = 600+left_label_space+right_margin
+
+            let svg = d3.select("body")
+                        .append("svg")
+                        .attr("width",w)
+                        .attr("height",h)
+
+            d3.csv("testp2.csv").then((data)=>{
+                console.log("p min: "+d3.min(data,(d)=>{return d.p}))
+                console.log("p max: "+d3.max(data,(d)=>{return d.p}))
+                let x_min = d3.min(data, (d)=>{return d.x})
+                let x_max = d3.max(data, (d)=>{return d.x})
+                let y_min = d3.min(data, (d)=>{return d.y})
+                let y_max = d3.max(data, (d)=>{return d.y})
+
+                let y_scale = d3.scaleLinear()
+                                .domain([y_min,y_max])
+                                .range([h-bottom_label_space,top_space])
+                let x_scale = d3.scaleLinear()
+                                .domain([x_min,x_max])
+                                .range([left_label_space,w-right_margin])
+                function rotate_scale(num) {
+                    return num * 10;
+                }
+
+                svg.selectAll("point")
+                    .data(data)
+                    .enter()
+                    .append("circle")
+                    .attr("cx",(d)=>{return x_scale(d.x)})
+                    .attr("cy",(d)=>{return y_scale(d.y)})
+                    // .attr("r",3)
+                    .attr("r",(d)=>{return d.p})
+                    .attr("fill",(d)=>{return "hsla("+(d.p * 20)+",100%,50%,0.7)"})
+                    .on("click",function (event,d) {
+                    //Get this bar's x/y values, then augment for the tooltip, modified from Murray tooltip code
+                        let xPosition = parseFloat(d3.select(this).attr("cx"));
+                        let yPosition = parseFloat(d3.select(this).attr("cy"));
+                        //Create the tooltip label
+                        svg.append("text")
+                                .attr("id", "tooltiprgb")
+                                .attr("x", xPosition+2)
+                                .attr("y", yPosition-2)
+                                // .attr("text-anchor", "middle")
+                                .attr("font-family", "sans-serif")
+                                .attr("font-size", "12px")
+                                .attr("font-weight", "bold")
+                                .attr("fill", "black")
+                                .text("x="+d.x+",y="+d.y+",p="+d.p);
+
+                        })
+                    .on("mouseout", function() {
+                                //Remove the tooltip
+                                d3.select("#tooltiprgb").remove();})
+                svg.selectAll("bars")
+                    .data(data)
+                    .enter()
+                    .append("rect")
+                    .attr("height","20px")
+                    .attr("width","1px")
+                    .attr("transform",(d)=>{
+                        t_x = x_scale(d.x)
+                        t_y = y_scale(d.y)
+                        r = rotate_scale(d.p)
+                        return "translate("+t_x+","+t_y+")rotate("+r+")"
+                    })
+                    .attr("fill", "rgba(0,0,0,0)")
+			   });
+        </script>
+    </body>
+</html>
