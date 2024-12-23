@@ -5,6 +5,7 @@
     </head>
     <body>
         <script type="text/javascript">
+            // const d3 = require('d3')
             let true_width = 1400
             let w = 1200
             let h = 800
@@ -54,7 +55,9 @@
                         veg: "rgb(177,233,175)",
                         meat: "firebrick",
                         bean: "palevioletred",
-                        sauce: "powderblue"
+                        sauce: "powderblue",
+                        tortilla: "wheat",
+                        cheese: "orange"
                     }
                 const bar_chart_vert = h/3
                 let month_scale = d3.scaleOrdinal()
@@ -104,6 +107,9 @@
                         }
                         else{
                             bins[month][ingredient][subcategory][detail] = increment
+                        }
+                        if (['tortilla', 'cheese'].includes(ingredient)){
+                            bins[month][ingredient][ingredient].total += increment
                         }
                     }
                     for (let month of months){
@@ -203,6 +209,7 @@
                     let bar_y_axis = d3.axisLeft()
                                         .scale(bar_y_scale)
                                         .ticks(5)
+                    let inner_bar_spacing = 12
 
                     svg.append("g")
                     .attr("id","bar_y_axis")
@@ -233,11 +240,15 @@
                         .attr("y",bar_y_scale(35))
                         .text("Quesadilla Ingredient Distribution Throughout 2021")
 
+                    let exceptions = ['tortilla','cheese']
                     for (let month in bins){
                         let ingredient_offset = 0
                         for (let ingredient in bins[month]){
                             let option_offset = 0
                             for (let option in bins[month][ingredient]){
+                                if (exceptions.includes(option)){
+                                    continue
+                                }
                                 let option_count = bins[month][ingredient][option].total
                                 svg.append("rect")
                                     .attr("x",(bar_x_scale(month_scale(month)) + ingredient_offset))
@@ -294,7 +305,26 @@
                                     })
                                 option_offset += option_count
                             }
-                            ingredient_offset += 12
+                            ingredient_offset += inner_bar_spacing
+                        }
+                    }
+                    // cover rects
+                    for (let month in bins){
+                        let ingredient_offset = 0
+                        for (let ingredient of exceptions){
+                            console.log(ingredient)
+                            let total = bins[month][ingredient][ingredient].total
+                            svg.append("rect")
+                                .attr("id",`${ingredient}_${month}`)
+                                .attr("x",(bar_x_scale(month_scale(month)) + ingredient_offset))
+                                .attr("y",(bar_y_scale(total)))
+                                .attr("width",10)
+                                .attr("height",(origin.y - bar_y_scale(total)))
+                                .attr("fill",option_colors[ingredient])
+                                .attr("stroke","black")
+                                .attr("stroke-width",0.25)
+                                .attr("class",()=>{return ingredient + " ingredient_bar "})
+                            ingredient_offset += inner_bar_spacing
                         }
                     }
                 }
@@ -601,7 +631,7 @@
                         .text("Hover over a node for more info")
                 }
                 let bins = make_bins(months, ingredients, simplifications)
-                // console.log(bins)
+                console.log(bins)
                 make_bars()
                 make_legend()
                 add_instructions()
