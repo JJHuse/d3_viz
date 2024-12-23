@@ -323,7 +323,11 @@
                                 .attr("fill",option_colors[ingredient])
                                 .attr("stroke","black")
                                 .attr("stroke-width",0.25)
-                                .attr("class",()=>{return ingredient + " ingredient_bar "})
+                                // .attr("class",()=>{return ingredient + " ingredient_bar "})
+                                .attr("class","ingredient_bar")
+                                .on("mouseover",function(){
+                                    d3.select(this).attr("visibility","hidden");
+                                })
                             ingredient_offset += inner_bar_spacing
                         }
                     }
